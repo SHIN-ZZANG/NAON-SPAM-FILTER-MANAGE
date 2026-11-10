@@ -1,0 +1,19 @@
+# api (Spring Boot)
+api/target/
+api/data/
+*.mv.db
+*.trace.db
+
+# web (Svelte)
+web/node_modules/
+web/dist/
+
+# env
+.env
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db

@@ -1,0 +1,836 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>스팸필터 대시보드</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+/* ── 디자인 토큰 ─────────────────────────────────────────────
+   시리즈 색(정상/스팸/격리)은 dataviz 검증 스크립트로 라이트·다크 각각 검증함.
+   라이트: #5585cc / #eda100 / #d63a55  (CVD ΔE 19.7, 정상시력 ΔE 24.9 · 스팸 amber는 대비 2.1:1 → 범례·표 보기로 보완)
+   다크:   #5b8fd8 / #c98500 / #dd3f63  (CVD ΔE 10.2, 정상시력 ΔE 18.8, 대비 모두 3:1 이상) */
+:root {
+  color-scheme: light;
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --border: #e3e6eb;
+  --text: #15171b;
+  --text-2: #4c525d;
+  --text-3: #646b77;
+  --accent: #4f46e5;
+  --accent-soft: #eef0ff;
+  --accent-text: #3f37c9;
+  --grid: #eceef2;
+  --axis: #c3c8d0;
+  --s-normal: #5585cc;
+  --s-spam: #eda100;
+  --s-quar: #d63a55;
+  --bar-neutral: #4b5260;
+  --track: #eceef2;
+  --good: #0a7a0a;
+  --bad: #c0303f;
+  --badge-bg: #fde8eb;
+  --badge-text: #a8243a;
+  --ok-dot: #0ca30c;
+  --tooltip-bg: #15171b;
+  --tooltip-text: #f5f6f8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111214;
+    --surface: #1a1b1e;
+    --surface-2: #232428;
+    --border: #2e3036;
+    --text: #eef0f3;
+    --text-2: #b9bec7;
+    --text-3: #979eaa;
+    --accent: #8b8cf6;
+    --accent-soft: #26264a;
+    --accent-text: #b4b5ff;
+    --grid: #2a2c31;
+    --axis: #4a4e57;
+    --s-normal: #5b8fd8;
+    --s-spam: #c98500;
+    --s-quar: #dd3f63;
+    --bar-neutral: #a3a9b4;
+    --track: #2a2c31;
+    --good: #4cc764;
+    --bad: #f27c88;
+    --badge-bg: #3a1d24;
+    --badge-text: #ff9aa8;
+    --ok-dot: #0ca30c;
+    --tooltip-bg: #eef0f3;
+    --tooltip-text: #15171b;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111214;
+  --surface: #1a1b1e;
+  --surface-2: #232428;
+  --border: #2e3036;
+  --text: #eef0f3;
+  --text-2: #b9bec7;
+  --text-3: #979eaa;
+  --accent: #8b8cf6;
+  --accent-soft: #26264a;
+  --accent-text: #b4b5ff;
+  --grid: #2a2c31;
+  --axis: #4a4e57;
+  --s-normal: #5b8fd8;
+  --s-spam: #c98500;
+  --s-quar: #dd3f63;
+  --bar-neutral: #a3a9b4;
+  --track: #2a2c31;
+  --good: #4cc764;
+  --bad: #f27c88;
+  --badge-bg: #3a1d24;
+  --badge-text: #ff9aa8;
+  --ok-dot: #0ca30c;
+  --tooltip-bg: #eef0f3;
+  --tooltip-text: #15171b;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Pretendard", system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; }
+.mono { font-family: ui-monospace, "SFMono-Regular", Consolas, "D2Coding", monospace; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ── 레이아웃 ── */
+.app { display: flex; flex-wrap: wrap; min-height: 100vh; }
+.sidebar {
+  flex: 0 0 220px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  padding: 20px 12px;
+}
+.main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; }
+
+.logo { display: flex; align-items: center; gap: 10px; padding: 4px 10px 22px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+.logo svg { color: var(--accent); }
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 10px; min-height: 40px; border-radius: 8px;
+  color: var(--text-2); text-decoration: none; font-weight: 500;
+}
+.nav a:hover { background: var(--surface-2); color: var(--text); }
+.nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.nav .badge {
+  margin-left: auto; font-size: 12px; font-weight: 600;
+  background: var(--badge-bg); color: var(--badge-text);
+  padding: 1px 8px; border-radius: 999px;
+}
+.sidebar .ver { margin-top: auto; padding: 12px 10px 0; font-size: 12px; color: var(--text-3); }
+
+.topbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px;
+  padding: 16px 28px; border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.topbar h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.topbar .sub { color: var(--text-3); font-size: 13px; }
+.topbar .spacer { flex: 1 1 auto; }
+.seg { display: inline-flex; background: var(--surface-2); border-radius: 8px; padding: 3px; gap: 2px; }
+.seg button {
+  border: 0; background: transparent; padding: 0 14px; min-height: 34px; border-radius: 6px;
+  color: var(--text-2); font-weight: 500; cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 0 0 1px var(--border); }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 0 12px; min-height: 32px; border: 1px solid var(--border); border-radius: 999px;
+  font-size: 13px; color: var(--text-2);
+}
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok-dot); }
+.icon-btn {
+  width: 40px; height: 40px; display: inline-grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer; color: var(--text-2);
+}
+.icon-btn:hover { color: var(--text); background: var(--surface-2); }
+.avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent-text);
+  display: inline-grid; place-items: center; font-weight: 700; font-size: 13px;
+}
+
+.content { padding: 24px 28px 40px; display: flex; flex-direction: column; gap: 20px; max-width: 1400px; width: 100%; }
+.grid-kpi { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.grid-2-1 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
+.grid-3-2 { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; min-width: 0; }
+.card-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.card-head h2 { margin: 0; font-size: 15px; font-weight: 650; }
+.card-head .hint { color: var(--text-3); font-size: 12.5px; }
+.card-head .right { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* KPI */
+.kpi .label { color: var(--text-2); font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+.kpi .label .sw { width: 10px; height: 10px; border-radius: 3px; }
+.kpi .value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 4px; }
+.kpi .delta { font-size: 13px; color: var(--text-3); }
+.kpi .delta b { font-weight: 600; }
+.delta-good { color: var(--good) !important; }
+.delta-bad { color: var(--bad) !important; }
+.delta-neutral { color: var(--text-2) !important; }
+
+/* 범례 */
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.link-btn {
+  border: 0; background: transparent; color: var(--accent-text); font-weight: 600; font-size: 13px;
+  cursor: pointer; padding: 0 4px; min-height: 32px;
+}
+.link-btn:hover { text-decoration: underline; }
+
+.chart-box { position: relative; width: 100%; }
+.chart-box svg { display: block; }
+.table-box { overflow-x: auto; }
+
+/* 판정 비율 */
+.ratio-bar { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; margin: 6px 0 14px; }
+.ratio-bar div { height: 100%; }
+.ratio-list { display: flex; flex-direction: column; gap: 10px; }
+.ratio-row { display: flex; align-items: center; gap: 10px; }
+.ratio-row i { width: 10px; height: 10px; border-radius: 3px; }
+.ratio-row .name { color: var(--text-2); }
+.ratio-row .pct { margin-left: auto; font-weight: 650; }
+.ratio-row .cnt { color: var(--text-3); width: 84px; text-align: right; font-size: 12.5px; }
+.side-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+.mini .k { color: var(--text-3); font-size: 12.5px; }
+.mini .v { font-size: 20px; font-weight: 700; margin-top: 2px; }
+.mini .v small { font-size: 13px; font-weight: 500; color: var(--text-3); margin-left: 2px; }
+.mini .s { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+
+/* 규칙 / 도메인 막대 목록 */
+.hbar-list { display: flex; flex-direction: column; gap: 4px; }
+.hbar-row {
+  display: grid; grid-template-columns: minmax(150px, 1.25fr) minmax(80px, 1.6fr) 64px;
+  align-items: center; gap: 14px; padding: 6px 8px; border-radius: 8px;
+}
+.hbar-row:hover { background: var(--surface-2); }
+.hbar-row .nm { min-width: 0; }
+.hbar-row .nm .code { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.hbar-row .nm .desc { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.track { height: 10px; border-radius: 4px; background: var(--track); position: relative; overflow: hidden; }
+.track > div { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 4px 4px 0; }
+.hbar-row .val { text-align: right; font-weight: 600; font-size: 13px; }
+.dom-row { grid-template-columns: minmax(130px, 1.3fr) minmax(70px, 1.4fr) 92px; }
+.dom-row .val small { display: block; color: var(--text-3); font-weight: 500; font-size: 12px; }
+
+/* 테이블 */
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; font-weight: 600; color: var(--text-3); font-size: 12.5px; padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.subj { white-space: normal; min-width: 220px; }
+th.r, td.r { text-align: right; }
+.score { display: inline-block; min-width: 46px; text-align: center; padding: 2px 8px; border-radius: 6px; background: var(--badge-bg); color: var(--badge-text); font-weight: 650; }
+.btn {
+  border: 1px solid var(--border); background: var(--surface); border-radius: 8px;
+  padding: 0 12px; min-height: 32px; cursor: pointer; font-weight: 500; font-size: 13px;
+}
+.btn:hover { background: var(--surface-2); }
+.card-foot { display: flex; justify-content: flex-end; margin-top: 10px; }
+.card-foot a { color: var(--accent-text); font-weight: 600; text-decoration: none; font-size: 13px; padding: 6px 4px; }
+.card-foot a:hover { text-decoration: underline; }
+
+/* 툴팁 */
+.tooltip {
+  position: fixed; z-index: 50; pointer-events: none;
+  background: var(--tooltip-bg); color: var(--tooltip-text);
+  border-radius: 8px; padding: 10px 12px; font-size: 12.5px; min-width: 150px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.18); opacity: 0; transition: opacity .08s;
+}
+.tooltip.show { opacity: 1; }
+.tooltip .t { font-weight: 700; margin-bottom: 6px; }
+.tooltip .r { display: flex; align-items: center; gap: 8px; }
+.tooltip .r i { width: 8px; height: 8px; border-radius: 2px; }
+.tooltip .r b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.tooltip .sum { border-top: 1px solid rgba(127,127,127,.35); margin-top: 6px; padding-top: 6px; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ── 반응형 ── */
+@media (max-width: 1180px) {
+  .grid-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid-2-1, .grid-3-2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  .sidebar { flex: 1 1 100%; border-right: 0; border-bottom: 1px solid var(--border); padding: 12px 16px; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .logo { padding: 0 8px 0 0; }
+  .nav { flex-direction: row; flex-wrap: wrap; }
+  .sidebar .ver { display: none; }
+  .topbar { padding: 14px 16px; }
+  .content { padding: 16px; }
+}
+@media (max-width: 520px) {
+  .grid-kpi { grid-template-columns: minmax(0, 1fr); }
+  .hbar-row { grid-template-columns: minmax(0, 1fr) 64px; }
+  .hbar-row .track { grid-column: 1 / -1; grid-row: 2; }
+  .dom-row { grid-template-columns: minmax(0, 1fr) 92px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 사이드바 -->
+  <aside class="sidebar" aria-label="주 메뉴">
+    <div class="logo">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+      SpamFilter
+    </div>
+    <nav class="nav">
+      <a href="#" aria-current="page">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        대시보드
+      </a>
+      <a href="#">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
+        처리 이력
+      </a>
+      <a href="#">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M10 14h4"/></svg>
+        격리함
+        <span class="badge num" id="nav-quar">1,630</span>
+      </a>
+      <a href="#">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6l1 1 2-2M3 12l1 1 2-2"/><path d="M3.5 17.5l2 2M5.5 17.5l-2 2"/></svg>
+        허용/차단 목록
+      </a>
+      <a href="#">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>
+        점수 정책
+      </a>
+    </nav>
+    <div class="ver">v0.1.0</div>
+  </aside>
+
+  <div class="main">
+    <!-- 상단바 -->
+    <header class="topbar">
+      <div>
+        <h1>대시보드</h1>
+        <div class="sub" id="as-of">최근 24시간 · 2026-11-05 09:00 기준</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="seg" role="group" aria-label="조회 기간">
+        <button type="button" data-range="24h" aria-pressed="true">24시간</button>
+        <button type="button" data-range="7d" aria-pressed="false">7일</button>
+        <button type="button" data-range="30d" aria-pressed="false">30일</button>
+      </div>
+      <span class="chip"><span class="dot" aria-hidden="true"></span>Rspamd 연결됨</span>
+      <button type="button" class="icon-btn" id="theme-btn" aria-label="다크 모드로 전환">
+        <svg id="theme-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg>
+      </button>
+      <span class="avatar" role="img" aria-label="관리자">관리</span>
+    </header>
+
+    <main class="content">
+
+      <!-- KPI -->
+      <section class="grid-kpi" aria-label="핵심 지표">
+        <div class="card kpi">
+          <div class="label">검사한 메일</div>
+          <div class="value num" id="k-total">48,210</div>
+          <div class="delta" id="k-total-d"></div>
+        </div>
+        <div class="card kpi">
+          <div class="label"><span class="sw" style="background: var(--s-spam)"></span>스팸함 이동</div>
+          <div class="value num" id="k-spam">6,120</div>
+          <div class="delta" id="k-spam-d"></div>
+        </div>
+        <div class="card kpi">
+          <div class="label"><span class="sw" style="background: var(--s-quar)"></span>격리</div>
+          <div class="value num" id="k-quar">1,630</div>
+          <div class="delta" id="k-quar-d"></div>
+        </div>
+        <div class="card kpi">
+          <div class="label">스팸 비율</div>
+          <div class="value num" id="k-rate">16.1%</div>
+          <div class="delta" id="k-rate-d"></div>
+        </div>
+      </section>
+
+      <!-- 처리량 + 판정 비율 -->
+      <section class="grid-2-1">
+        <div class="card">
+          <div class="card-head">
+            <h2 id="flow-title">시간대별 처리량</h2>
+            <span class="hint" id="flow-hint">1시간 단위</span>
+            <div class="right">
+              <div class="legend" aria-hidden="true">
+                <span><i style="background: var(--s-normal)"></i>정상</span>
+                <span><i style="background: var(--s-spam)"></i>스팸</span>
+                <span><i style="background: var(--s-quar)"></i>격리</span>
+              </div>
+              <button type="button" class="link-btn" id="view-toggle" aria-pressed="false">표로 보기</button>
+            </div>
+          </div>
+          <div class="chart-box" id="flow-chart" role="img" aria-label="시간대별 처리량 누적 막대 차트"></div>
+          <div class="table-box" id="flow-table" hidden></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>판정 비율</h2></div>
+          <div class="ratio-bar" id="ratio-bar" role="img" aria-label="판정 비율"></div>
+          <div class="ratio-list" id="ratio-list"></div>
+          <div class="side-stats">
+            <div class="mini">
+              <div class="k">평균 검사 시간</div>
+              <div class="v num" id="m-latency">38.4<small>ms</small></div>
+              <div class="s">메일 1건당</div>
+            </div>
+            <div class="mini">
+              <div class="k">사용자 학습</div>
+              <div class="v num" id="m-learn-spam">212<small>건</small></div>
+              <div class="s num" id="m-learn-ham">스팸 신고 · 스팸 아님 47건</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 규칙 + 도메인 -->
+      <section class="grid-3-2">
+        <div class="card">
+          <div class="card-head">
+            <h2>주요 탐지 규칙 Top 8</h2>
+            <span class="hint">규칙 적중 수</span>
+          </div>
+          <div class="hbar-list" id="rules"></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <h2>스팸 발신 도메인 Top 6</h2>
+            <span class="hint">스팸 / 전체 수신</span>
+          </div>
+          <div class="hbar-list" id="domains"></div>
+        </div>
+      </section>
+
+      <!-- 최근 격리 -->
+      <section class="card">
+        <div class="card-head">
+          <h2>최근 격리 메일</h2>
+          <span class="hint">점수 15 이상 · 관리자 확인 필요</span>
+        </div>
+        <div class="table-box">
+          <table>
+            <thead>
+              <tr><th scope="col">시간</th><th scope="col">발신자</th><th scope="col">제목</th><th scope="col" class="r">점수</th><th scope="col" class="r"><span class="sr-only">작업</span></th></tr>
+            </thead>
+            <tbody id="quar-body"></tbody>
+          </table>
+        </div>
+        <div class="card-foot"><a href="#">격리함 전체 보기 →</a></div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip" role="tooltip"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── 샘플 데이터 ─────────────────────────────────────────── */
+  var NOW = Date.UTC(2026, 10, 5, 9, 0); // 2026-11-05 09:00
+  var DOW = ['일', '월', '화', '수', '목', '금', '토'];
+
+  // 결정적 의사난수 (새로고침해도 같은 샘플)
+  function rng(seed) {
+    var s = seed >>> 0;
+    return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  }
+
+  // 가중치 배열을 합계 total 로 정수 분배 (최대잉여법)
+  function distribute(weights, total) {
+    var sum = weights.reduce(function (a, b) { return a + b; }, 0);
+    var raw = weights.map(function (w) { return w / sum * total; });
+    var out = raw.map(Math.floor);
+    var left = total - out.reduce(function (a, b) { return a + b; }, 0);
+    raw.map(function (r, i) { return { i: i, f: r - Math.floor(r) }; })
+      .sort(function (a, b) { return b.f - a.f; })
+      .slice(0, left).forEach(function (o) { out[o.i] += 1; });
+    return out;
+  }
+
+  // 24시간: 시(0~23)별 가중치 — 업무시간 많고 새벽 2~4시 스팸 급증
+  var H_NORMAL = [180,120,100,90,110,220,520,1400,2600,3300,3400,3200,2500,3100,3300,3200,3000,2700,1800,1100,800,600,420,280];
+  var H_SPAM   = [140,180,420,560,380,150,120,180,260,300,320,300,260,290,300,280,260,240,200,180,170,160,150,140];
+  var H_QUAR   = [40,50,110,140,90,40,30,50,70,80,85,80,70,78,80,75,70,65,55,50,45,42,40,38];
+
+  function hourBuckets() {
+    var hours = [];
+    for (var k = 23; k >= 0; k--) hours.push(new Date(NOW - k * 3600e3).getUTCHours());
+    return hours;
+  }
+
+  function dayBuckets(n) {
+    var days = [];
+    for (var k = n - 1; k >= 0; k--) days.push(new Date(NOW - k * 86400e3));
+    return days;
+  }
+
+  function buildSeries(range) {
+    var R = RANGES[range];
+    var labels = [], wN = [], wS = [], wQ = [], full = [];
+    if (range === '24h') {
+      hourBuckets().forEach(function (h) {
+        labels.push(String(h).padStart(2, '0'));
+        full.push(String(h).padStart(2, '0') + ':00 ~ ' + String((h + 1) % 24).padStart(2, '0') + ':00');
+        wN.push(H_NORMAL[h]); wS.push(H_SPAM[h]); wQ.push(H_QUAR[h]);
+      });
+    } else {
+      var r = rng(range === '7d' ? 7 : 30);
+      dayBuckets(range === '7d' ? 7 : 30).forEach(function (d) {
+        var dow = d.getUTCDay(), weekend = dow === 0 || dow === 6;
+        var j = 0.9 + r() * 0.2;
+        labels.push((d.getUTCMonth() + 1) + '/' + d.getUTCDate());
+        full.push((d.getUTCMonth() + 1) + '월 ' + d.getUTCDate() + '일 (' + DOW[dow] + ')');
+        wN.push((weekend ? 0.32 : 1) * j);
+        wS.push((weekend ? 0.82 : 1) * (0.85 + r() * 0.3));
+        wQ.push((weekend ? 0.85 : 1) * (0.85 + r() * 0.3));
+      });
+    }
+    var n = distribute(wN, R.total - R.spam - R.quar), s = distribute(wS, R.spam), q = distribute(wQ, R.quar);
+    return labels.map(function (l, i) { return { label: l, full: full[i], normal: n[i], spam: s[i], quar: q[i] }; });
+  }
+
+  var RANGES = {
+    '24h': { name: '최근 24시간', unit: '1시간 단위', title: '시간대별 처리량', cmp: '전일 대비',
+             total: 48210, spam: 6120, quar: 1630,
+             d: { total: 4.2, spam: -2.0, quar: 8.0, rate: -1.1 },
+             latency: 38.4, learnSpam: 212, learnHam: 47, factor: 1 },
+    '7d':  { name: '최근 7일', unit: '1일 단위', title: '일별 처리량', cmp: '직전 7일 대비',
+             total: 312480, spam: 41870, quar: 10230,
+             d: { total: 1.8, spam: 3.1, quar: 5.4, rate: 0.6 },
+             latency: 36.9, learnSpam: 1348, learnHam: 302, factor: 6.3 },
+    '30d': { name: '최근 30일', unit: '1일 단위', title: '일별 처리량', cmp: '직전 30일 대비',
+             total: 1284900, spam: 176200, quar: 41380,
+             d: { total: 6.5, spam: -4.2, quar: -1.9, rate: -0.9 },
+             latency: 37.6, learnSpam: 5610, learnHam: 1187, factor: 26.4 }
+  };
+
+  var RULES = [
+    ['BAYES_SPAM', '베이지안 분류기 스팸 판정', 3120],
+    ['URL_BLOCKLIST', '차단 URL 포함', 1874],
+    ['DMARC_POLICY_REJECT', 'DMARC 정책 위반', 1402],
+    ['R_SPF_FAIL', 'SPF 인증 실패', 1215],
+    ['MIME_HTML_ONLY', '텍스트 없는 HTML 메일', 988],
+    ['FUZZY_DENIED', '알려진 스팸과 유사', 845],
+    ['KO_AD_NO_PREFIX', '(광고) 표기 누락 광고', 612],
+    ['SUSPICIOUS_ATTACH', '위험 첨부 확장자', 377]
+  ];
+
+  var DOMAINS = [
+    ['promo-mailer.xyz', 812, 845],
+    ['bulk-sender.top', 640, 652],
+    ['cheap-deal.click', 511, 530],
+    ['newsletter-kr.info', 302, 1210],
+    ['account-verify.co', 288, 288],
+    ['event-gift.shop', 214, 240]
+  ];
+
+  var QUARANTINE = [
+    ['08:52', 'no-reply@account-verify.co', '[긴급] 계정이 정지될 예정입니다', 18.7],
+    ['08:31', 'sales@cheap-deal.click', '(광고) 오늘만 90% 할인', 16.2],
+    ['07:58', 'hr@naonsoft-payroll.com', '11월 급여명세서 확인', 21.4],
+    ['07:12', 'admin@bulk-sender.top', 'Invoice_2026_11.zip', 19.9],
+    ['06:40', 'gift@event-gift.shop', '당첨을 축하드립니다', 15.8]
+  ];
+
+  /* ── 공통 도우미 ─────────────────────────────────────────── */
+  var fmt = new Intl.NumberFormat('ko-KR');
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function pct(a, b, digits) { return (a / b * 100).toFixed(digits == null ? 1 : digits); }
+
+  var tip = $('tooltip');
+  function showTip(html, x, y) {
+    tip.innerHTML = html;
+    tip.classList.add('show');
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    var left = x + 14, topY = y + 14;
+    if (left + w > window.innerWidth - 8) left = x - w - 14;
+    if (topY + h > window.innerHeight - 8) topY = y - h - 14;
+    tip.style.left = Math.max(8, left) + 'px';
+    tip.style.top = Math.max(8, topY) + 'px';
+  }
+  function hideTip() { tip.classList.remove('show'); }
+
+  function tipRows(d) {
+    var total = d.normal + d.spam + d.quar;
+    return '<div class="t">' + esc(d.full) + '</div>' +
+      '<div class="r"><i style="background:var(--s-quar)"></i>격리<b>' + fmt.format(d.quar) + '</b></div>' +
+      '<div class="r"><i style="background:var(--s-spam)"></i>스팸<b>' + fmt.format(d.spam) + '</b></div>' +
+      '<div class="r"><i style="background:var(--s-normal)"></i>정상<b>' + fmt.format(d.normal) + '</b></div>' +
+      '<div class="r sum">합계<b>' + fmt.format(total) + '</b></div>';
+  }
+
+  function deltaHtml(v, unit, goodWhenDown, neutral, cmp) {
+    var up = v > 0;
+    var cls = neutral ? 'delta-neutral' : ((up !== goodWhenDown) ? 'delta-good' : 'delta-bad');
+    var word = neutral ? '' : (cls === 'delta-good' ? ' · 개선' : ' · 악화');
+    return '<b class="' + cls + '">' + (up ? '▲' : '▼') + ' ' + Math.abs(v).toFixed(1) + unit + word + '</b> ' + esc(cmp);
+  }
+
+  function niceStep(max, ticks) {
+    var raw = max / ticks, mag = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / mag;
+    var step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
+    return step * mag;
+  }
+  function shortNum(v) {
+    if (v >= 10000) return (v / 10000).toFixed(v % 10000 === 0 ? 0 : 1) + '만';
+    if (v >= 1000) return (v / 1000).toFixed(v % 1000 === 0 ? 0 : 1) + '천';
+    return String(v);
+  }
+
+  // 위쪽 모서리만 둥근 막대 (기준선 쪽은 직각)
+  function topRounded(x, y, w, h, r) {
+    r = Math.min(r, h, w / 2);
+    return 'M' + x + ',' + (y + h) + 'V' + (y + r) + 'Q' + x + ',' + y + ' ' + (x + r) + ',' + y +
+      'H' + (x + w - r) + 'Q' + (x + w) + ',' + y + ' ' + (x + w) + ',' + (y + r) + 'V' + (y + h) + 'Z';
+  }
+
+  /* ── 누적 막대 차트 ──────────────────────────────────────── */
+  var state = { range: '24h', table: false };
+
+  function drawFlow() {
+    var box = $('flow-chart');
+    var data = buildSeries(state.range);
+    var W = Math.max(280, box.clientWidth), H = 268;
+    var m = { l: 44, r: 8, t: 26, b: 28 };
+    var iw = W - m.l - m.r, ih = H - m.t - m.b;
+    var maxTotal = Math.max.apply(null, data.map(function (d) { return d.normal + d.spam + d.quar; }));
+    var step = niceStep(maxTotal, 5), yMax = Math.ceil(maxTotal / step) * step;
+    var y = function (v) { return m.t + ih - v / yMax * ih; };
+    var band = iw / data.length, bw = Math.max(3, Math.min(28, band * 0.64));
+    var labelEvery = data.length <= 7 ? 1 : data.length <= 24 ? 3 : 5;
+    if (W < 520 && data.length === 24) labelEvery = 6;
+
+    var s = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">';
+    // 격자 + y축 눈금
+    for (var v = 0; v <= yMax + 0.5; v += step) {
+      var yy = Math.round(y(v)) + 0.5;
+      s += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + yy + '" y2="' + yy + '" stroke="var(' + (v === 0 ? '--axis' : '--grid') + ')" stroke-width="1"/>';
+      s += '<text x="' + (m.l - 8) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="11.5" fill="var(--text-3)">' + shortNum(v) + '</text>';
+    }
+    // 하이라이트 띠 (hover)
+    s += '<rect id="hl" x="0" y="' + m.t + '" width="' + band + '" height="' + ih + '" fill="var(--surface-2)" opacity="0"/>';
+    // 막대
+    data.forEach(function (d, i) {
+      var x = m.l + i * band + (band - bw) / 2;
+      var base = y(0);
+      var segs = [['--s-normal', d.normal], ['--s-spam', d.spam], ['--s-quar', d.quar]];
+      var topIdx = -1;
+      segs.forEach(function (sg, k) { if (sg[1] > 0) topIdx = k; });
+      segs.forEach(function (sg, k) {
+        if (sg[1] <= 0) return;
+        var h = sg[1] / yMax * ih;
+        var gap = k > 0 ? 2 : 0;
+        var hh = Math.max(0.75, h - gap);
+        var yTop = base - h;
+        if (k === topIdx) s += '<path d="' + topRounded(x, yTop, bw, hh, 4) + '" fill="var(' + sg[0] + ')"/>';
+        else s += '<rect x="' + x + '" y="' + yTop + '" width="' + bw + '" height="' + hh + '" fill="var(' + sg[0] + ')"/>';
+        base -= h;
+      });
+      // 마지막 칸(가장 최근)이 항상 라벨을 갖도록 끝에서부터 간격을 센다
+      if ((data.length - 1 - i) % labelEvery === 0) {
+        s += '<text x="' + (m.l + i * band + band / 2) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="11.5" fill="var(--text-3)">' + esc(d.label + (state.range === '24h' ? '시' : '')) + '</text>';
+      }
+    });
+    // 선택적 직접 라벨: 24시간 보기의 새벽 스팸 급증
+    if (state.range === '24h') {
+      var peak = -1, peakVal = 0;
+      data.forEach(function (d, i) { if (d.spam > peakVal) { peakVal = d.spam; peak = i; } });
+      if (peak >= 0) {
+        var pd = data[peak], px = m.l + peak * band + band / 2, py = y(pd.normal + pd.spam + pd.quar) - 8;
+        var anchor = px > W - 140 ? 'end' : 'middle';
+        s += '<text x="' + px + '" y="' + py + '" text-anchor="' + anchor + '" font-size="12" font-weight="600" fill="var(--text)">새벽 ' + esc(pd.label) + '시 스팸 급증</text>';
+      }
+    }
+    // 마우스 히트 영역 (막대보다 넓게: 칸 전체)
+    data.forEach(function (d, i) {
+      s += '<rect class="hit" data-i="' + i + '" x="' + (m.l + i * band) + '" y="' + m.t + '" width="' + band + '" height="' + ih + '" fill="transparent"/>';
+    });
+    s += '</svg>';
+    box.innerHTML = s;
+    box.setAttribute('aria-label', RANGES[state.range].title + ' 누적 막대 차트. 표로 보기 버튼으로 수치를 확인할 수 있습니다.');
+
+    var hl = box.querySelector('#hl');
+    box.querySelectorAll('.hit').forEach(function (r) {
+      r.addEventListener('mousemove', function (e) {
+        var i = +r.getAttribute('data-i');
+        hl.setAttribute('x', m.l + i * band); hl.setAttribute('opacity', '1');
+        showTip(tipRows(data[i]), e.clientX, e.clientY);
+      });
+      r.addEventListener('mouseleave', function () { hl.setAttribute('opacity', '0'); hideTip(); });
+    });
+
+    // 표 보기
+    var t = '<table><thead><tr><th scope="col">' + (state.range === '24h' ? '시간' : '날짜') + '</th><th scope="col" class="r">정상</th><th scope="col" class="r">스팸</th><th scope="col" class="r">격리</th><th scope="col" class="r">합계</th></tr></thead><tbody>';
+    data.forEach(function (d) {
+      t += '<tr><td>' + esc(d.full) + '</td><td class="r num">' + fmt.format(d.normal) + '</td><td class="r num">' + fmt.format(d.spam) + '</td><td class="r num">' + fmt.format(d.quar) + '</td><td class="r num">' + fmt.format(d.normal + d.spam + d.quar) + '</td></tr>';
+    });
+    $('flow-table').innerHTML = t + '</tbody></table>';
+  }
+
+  /* ── 나머지 패널 ─────────────────────────────────────────── */
+  function drawPanels() {
+    var R = RANGES[state.range];
+    var normal = R.total - R.spam - R.quar;
+
+    $('as-of').textContent = R.name + ' · 2026-11-05 09:00 기준';
+    $('flow-title').textContent = R.title;
+    $('flow-hint').textContent = R.unit;
+
+    $('k-total').textContent = fmt.format(R.total);
+    $('k-spam').textContent = fmt.format(R.spam);
+    $('k-quar').textContent = fmt.format(R.quar);
+    $('k-rate').textContent = pct(R.spam + R.quar, R.total) + '%';
+    $('k-total-d').innerHTML = deltaHtml(R.d.total, '%', false, true, R.cmp);
+    $('k-spam-d').innerHTML = deltaHtml(R.d.spam, '%', true, false, R.cmp);
+    $('k-quar-d').innerHTML = deltaHtml(R.d.quar, '%', true, false, R.cmp);
+    $('k-rate-d').innerHTML = deltaHtml(R.d.rate, '%p', true, false, R.cmp);
+    $('nav-quar').textContent = fmt.format(RANGES['24h'].quar);
+
+    // 판정 비율
+    var parts = [['정상', normal, '--s-normal'], ['스팸', R.spam, '--s-spam'], ['격리', R.quar, '--s-quar']];
+    $('ratio-bar').innerHTML = parts.map(function (p) {
+      return '<div style="flex:' + p[1] + ' 1 0; background: var(' + p[2] + ')"></div>';
+    }).join('');
+    $('ratio-bar').setAttribute('aria-label', '판정 비율: ' + parts.map(function (p) { return p[0] + ' ' + pct(p[1], R.total) + '%'; }).join(', '));
+    $('ratio-list').innerHTML = parts.map(function (p) {
+      return '<div class="ratio-row"><i style="background: var(' + p[2] + ')"></i><span class="name">' + p[0] + '</span>' +
+        '<span class="pct num">' + pct(p[1], R.total) + '%</span><span class="cnt num">' + fmt.format(p[1]) + '건</span></div>';
+    }).join('');
+
+    $('m-latency').innerHTML = R.latency.toFixed(1) + '<small>ms</small>';
+    $('m-learn-spam').innerHTML = fmt.format(R.learnSpam) + '<small>건</small>';
+    $('m-learn-ham').textContent = '스팸 신고 · 스팸 아님 ' + fmt.format(R.learnHam) + '건';
+
+    // 규칙 (단일 계열 → 중립색 하나)
+    var rules = RULES.map(function (r, i) { return [r[0], r[1], Math.round(r[2] * R.factor * (1 + (i % 3 - 1) * 0.01 * (R.factor > 1 ? 1 : 0)))]; });
+    var rMax = rules[0][2];
+    $('rules').innerHTML = rules.map(function (r, i) {
+      return '<div class="hbar-row" data-kind="rule" data-i="' + i + '">' +
+        '<div class="nm"><span class="code mono">' + esc(r[0]) + '</span><span class="desc">' + esc(r[1]) + '</span></div>' +
+        '<div class="track" aria-hidden="true"><div style="width:' + (r[2] / rMax * 100).toFixed(1) + '%; background: var(--bar-neutral)"></div></div>' +
+        '<div class="val num">' + fmt.format(r[2]) + '</div></div>';
+    }).join('');
+
+    // 도메인 (스팸 비율 막대)
+    var doms = DOMAINS.map(function (d) { return [d[0], Math.round(d[1] * R.factor), Math.round(d[2] * R.factor)]; });
+    $('domains').innerHTML = doms.map(function (d, i) {
+      var ratio = d[1] / d[2] * 100;
+      return '<div class="hbar-row dom-row" data-kind="dom" data-i="' + i + '">' +
+        '<div class="nm"><span class="code mono">' + esc(d[0]) + '</span><span class="desc num">' + fmt.format(d[1]) + ' / ' + fmt.format(d[2]) + '건</span></div>' +
+        '<div class="track" aria-hidden="true"><div style="width:' + ratio.toFixed(1) + '%; background: var(--s-spam)"></div></div>' +
+        '<div class="val num">' + ratio.toFixed(1) + '%<small>스팸 비율</small></div></div>';
+    }).join('');
+
+    bindRowTips('rules', function (i) {
+      var r = rules[i];
+      return '<div class="t mono">' + esc(r[0]) + '</div><div>' + esc(r[1]) + '</div>' +
+        '<div class="r sum">적중<b>' + fmt.format(r[2]) + '건</b></div>' +
+        '<div class="r">스팸·격리 대비<b>' + pct(r[2], R.spam + R.quar) + '%</b></div>';
+    });
+    bindRowTips('domains', function (i) {
+      var d = doms[i];
+      return '<div class="t mono">' + esc(d[0]) + '</div>' +
+        '<div class="r"><i style="background:var(--s-spam)"></i>스팸<b>' + fmt.format(d[1]) + '</b></div>' +
+        '<div class="r">정상<b>' + fmt.format(d[2] - d[1]) + '</b></div>' +
+        '<div class="r sum">스팸 비율<b>' + pct(d[1], d[2]) + '%</b></div>';
+    });
+  }
+
+  function bindRowTips(id, html) {
+    $(id).querySelectorAll('.hbar-row').forEach(function (row) {
+      row.addEventListener('mousemove', function (e) { showTip(html(+row.getAttribute('data-i')), e.clientX, e.clientY); });
+      row.addEventListener('mouseleave', hideTip);
+    });
+  }
+
+  function drawQuarantine() {
+    $('quar-body').innerHTML = QUARANTINE.map(function (q) {
+      return '<tr><td class="num">' + q[0] + '</td><td class="mono" style="font-size:12.5px">' + esc(q[1]) + '</td>' +
+        '<td class="subj">' + esc(q[2]) + '</td><td class="r"><span class="score num">' + q[3].toFixed(1) + '</span></td>' +
+        '<td class="r"><button type="button" class="btn" aria-label="' + esc(q[2]) + ' 격리 해제">해제</button></td></tr>';
+    }).join('');
+  }
+
+  /* ── 기간 토글 / 표 보기 / 테마 ──────────────────────────── */
+  document.querySelectorAll('.seg button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.range = b.getAttribute('data-range');
+      document.querySelectorAll('.seg button').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
+      drawPanels(); drawFlow();
+    });
+  });
+
+  $('view-toggle').addEventListener('click', function () {
+    state.table = !state.table;
+    $('flow-chart').hidden = state.table;
+    $('flow-table').hidden = !state.table;
+    this.textContent = state.table ? '차트로 보기' : '표로 보기';
+    this.setAttribute('aria-pressed', String(state.table));
+    if (!state.table) drawFlow();
+  });
+
+  var SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
+  var MOON = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';
+  function isDark() {
+    var t = document.documentElement.getAttribute('data-theme');
+    if (t) return t === 'dark';
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function syncThemeBtn() {
+    var dark = isDark();
+    $('theme-icon').innerHTML = dark ? SUN : MOON;
+    $('theme-btn').setAttribute('aria-label', dark ? '라이트 모드로 전환' : '다크 모드로 전환');
+  }
+  try { var saved = localStorage.getItem('sf-theme'); if (saved) document.documentElement.setAttribute('data-theme', saved); } catch (e) {}
+  $('theme-btn').addEventListener('click', function () {
+    var next = isDark() ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('sf-theme', next); } catch (e) {}
+    syncThemeBtn();
+  });
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', syncThemeBtn);
+  }
+
+  /* ── 시작 ── */
+  syncThemeBtn();
+  drawPanels();
+  drawQuarantine();
+  drawFlow();
+  var resizeTimer;
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(function () { if (!state.table) drawFlow(); }, 60); }).observe($('flow-chart').parentElement);
+  } else {
+    window.addEventListener('resize', function () { if (!state.table) drawFlow(); });
+  }
+})();
+</script>
+</body>
+</html>
